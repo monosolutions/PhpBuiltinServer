@@ -3,3 +3,15 @@ modules:
     enabled:
         - PhpBrowser
         - WebHelper
+    config:
+        PhpBrowser:
+           url: http://localhost:9000
+
+extensions:
+    config:
+        Codeception\Extension\PhpBuiltinServer:
+            hostname: localhost
+            port: 9000
+            documentRoot: tests/_data
+            startDelay: 1
+

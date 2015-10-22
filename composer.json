@@ -1,6 +1,6 @@
 {
-    "name": "codeception/phpbuiltinserver",
-    "description": "PhpBuiltinServer extension for Codeception",
+    "name": "archanium/phpbuiltinserver",
+    "description": "PhpBuiltinServer extension for Codeception, modified to accept configuration for each suite.",
     "keywords": ["codeception"],
     "minimum-stability": "stable",
     "license": "MIT",
@@ -8,6 +8,10 @@
         {
             "name": "tiger-seo",
             "email": "tiger.seo@gmail.com"
+        },
+        {
+            "name": "Thomas Faurbye Nielsen",
+            "email": "thomas@faurbye.info"
         }
     ],
     "require": {

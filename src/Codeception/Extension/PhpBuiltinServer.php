@@ -6,19 +6,22 @@
 namespace Codeception\Extension;
 
 use Codeception\Configuration;
-use Codeception\Exception\ModuleConfig as ModuleConfigException;
+use Codeception\Event\SuiteEvent;
+use Codeception\Exception\ModuleConfigException;
 use Codeception\Platform\Extension;
-use Codeception\Exception\Extension as ExtensionException;
+use Codeception\Exception\ExtensionException;
 
 class PhpBuiltinServer extends Extension
 {
     static $events = [
-        'suite.before' => 'beforeSuite'
+        'suite.before' => 'beforeSuite',
+        'suite.after'  => 'afterSuite',
     ];
 
     private $requiredFields = ['hostname', 'port', 'documentRoot'];
     private $resource;
     private $pipes;
+    private $orgConfig;
 
     public function __construct($config, $options)
     {
@@ -27,6 +30,7 @@ class PhpBuiltinServer extends Extension
         }
 
         parent::__construct($config, $options);
+        $this->orgConfig = $config;
         $this->validateConfig();
 
         if (
@@ -35,24 +39,13 @@ class PhpBuiltinServer extends Extension
         ) {
             $this->config['startDelay'] = 1;
         }
-
-        $this->startServer();
-
-        $resource = $this->resource;
-        register_shutdown_function(
-            function () use ($resource) {
-                if (is_resource($resource)) {
-                    proc_terminate($resource);
-                }
-            }
-        );
     }
 
     public function __destruct()
     {
         $this->stopServer();
     }
-    
+
     /**
      * this will prevent cloning
      */
@@ -137,6 +130,7 @@ class PhpBuiltinServer extends Extension
             }
             proc_terminate($this->resource, 2);
             unset($this->resource);
+            $this->resource = null;
         }
     }
 
@@ -176,8 +170,26 @@ class PhpBuiltinServer extends Extension
         }
     }
 
-    public function beforeSuite()
+    public function beforeSuite(SuiteEvent $event)
     {
+
+        $settings = $event->getSettings();
+        $config   = [];
+        if (array_key_exists("extensions", $settings)) {
+            if (array_key_exists("config", $settings["extensions"])) {
+                if (array_key_exists("Codeception\\Extension\\PhpBuiltinServer", $settings["extensions"]["config"])) {
+                    $config = $settings["extensions"]["config"]["Codeception\\Extension\\PhpBuiltinServer"];
+                }
+            }
+        }
+        $this->config = array_merge($this->orgConfig, $config);
+        $this->validateConfig();
+        $this->startServer();
         // dummy to keep reference to this instance, so that it wouldn't be destroyed immediately
+    }
+
+    public function afterSuite(SuiteEvent $event)
+    {
+        $this->stopServer();
     }
 }
