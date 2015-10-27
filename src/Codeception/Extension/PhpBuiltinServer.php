@@ -14,14 +14,14 @@ use Codeception\Exception\ExtensionException;
 class PhpBuiltinServer extends Extension
 {
     static $events = [
-        'suite.before' => 'beforeSuite',
-        'suite.after'  => 'afterSuite',
+        'suite.before' => ['beforeSuite', 1024],
     ];
 
     private $requiredFields = ['hostname', 'port', 'documentRoot'];
     private $resource;
     private $pipes;
     private $orgConfig;
+
 
     public function __construct($config, $options)
     {
@@ -158,7 +158,7 @@ class PhpBuiltinServer extends Extension
         if (false === realpath($this->config['documentRoot'])) {
             throw new ModuleConfigException(
                 get_class($this),
-                "\nDocument root does not exist. Please, update the configuration.\n\n"
+                "\nDocument ({$this->config['documentRoot']}) root does not exist. Please, update the configuration.\n\n"
             );
         }
 
@@ -172,6 +172,10 @@ class PhpBuiltinServer extends Extension
 
     public function beforeSuite(SuiteEvent $event)
     {
+
+        if (!is_null($this->resource)) {
+            $this->stopServer();
+        }
 
         $settings = $event->getSettings();
         $config   = [];
