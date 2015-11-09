@@ -114,23 +114,71 @@ class PhpBuiltinServer extends Extension
             proc_close($this->resource);
             throw new ExtensionException($this, 'Failed to start server.');
         }
+        $max_checks = 10;
+        $checks     = 0;
+        $this->write("Waiting for the PHP server to be reachable");
+        while (true) {
+            if ($checks >= $max_checks) {
+                throw new ExtensionException($this, 'PHP server never became reachable');
+                break;
+            }
 
-        if ($this->config['startDelay'] > 0) {
-            sleep($this->config['startDelay']);
+            if ($fp = @fsockopen($this->config['hostname'], $this->config['port'], $errCode, $errStr, 10)) {
+                $this->writeln('');
+                $this->writeln("PHP server is now reachable");
+                fclose($fp);
+                break;
+            }
+
+            $this->write('.');
+            $checks++;
+
+            // Wait before checking again
+            sleep(1);
         }
+
+        // Clear progress line writing
+        $this->writeln('');
     }
 
     private function stopServer()
     {
-        if ($this->resource !== null) {
-            foreach ($this->pipes AS $pipe) {
-                if (is_resource($pipe)) {
+
+        if ( $this->resource !== null) {
+            $this->write("Stopping PHP Server");
+
+            // Wait till the server has been stopped
+            $max_checks = 10;
+            for ($i = 0; $i < $max_checks; $i++) {
+                // If we're on the last loop, and it's still not shut down, just
+                // unset resource to allow the tests to finish
+                if ($i == $max_checks - 1 && proc_get_status($this->resource)['running'] == true) {
+                    $this->writeln('');
+                    $this->writeln("Unable to properly shutdown PHP server");
+                    unset($this->resource);
+                    $this->resource = null;
+                    break;
+                }
+
+                // Check if the process has stopped yet
+                if (proc_get_status($this->resource)['running'] == false) {
+                    $this->writeln('');
+                    $this->writeln("PHP server stopped");
+                    unset($this->resource);
+                    $this->resource = null;
+                    break;
+                }
+
+                foreach ($this->pipes as $pipe) {
                     fclose($pipe);
                 }
+                proc_terminate($this->resource, 2);
+
+                $this->write('.');
+
+                // Wait before checking again
+                sleep(1);
             }
-            proc_terminate($this->resource, 2);
-            unset($this->resource);
-            $this->resource = null;
         }
     }
 
@@ -189,6 +237,14 @@ class PhpBuiltinServer extends Extension
         $this->config = array_merge($this->orgConfig, $config);
         $this->validateConfig();
         $this->startServer();
+
+        if (isset($settings["extensions"]["enabled"]) && in_array(
+                trim(get_class($this), "/"),
+                $settings["extensions"]["enabled"]
+            )
+        ) {
+            $this->startServer();
+        }
         // dummy to keep reference to this instance, so that it wouldn't be destroyed immediately
     }
 
