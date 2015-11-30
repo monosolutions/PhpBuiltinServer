@@ -34,7 +34,7 @@ class Router
         if (file_exists($filePath) && is_file($filePath)) {
             return false; // serve the requested resource as-is.
         } elseif ($userRouter) {
-            return $userRouter;
+            return "{$documentRoot}/{$userRouter}";
         } else {
             if (is_dir($filePath) && file_exists($filePath . '/' . $directoryIndex)) {
                 return $filePath . '/' . $directoryIndex;
