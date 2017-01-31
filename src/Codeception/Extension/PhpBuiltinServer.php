@@ -21,7 +21,7 @@ class PhpBuiltinServer extends Extension
     private $resource;
     private $pipes;
     private $orgConfig;
-
+    private $port;
 
     public function __construct($config, $options)
     {
@@ -71,6 +71,7 @@ class PhpBuiltinServer extends Extension
         if ($this->isRemoteDebug()) {
             $parameters .= ' -dxdebug.remote_enable=1';
         }
+
         $parameters .= ' -dcodecept.access_log="' . Configuration::logDir() . 'phpbuiltinserver.access_log.txt' . '"';
 
         if (PHP_OS !== 'WINNT' && PHP_OS !== 'WIN32') {
@@ -86,7 +87,7 @@ class PhpBuiltinServer extends Extension
             $exec . PHP_BINARY . ' %s -S %s:%s -t "%s" "%s"',
             $parameters,
             $this->config['hostname'],
-            $this->config['port'],
+            $this->port,
             realpath($this->config['documentRoot']),
             __DIR__ . '/Router.php'
         );
@@ -99,23 +100,46 @@ class PhpBuiltinServer extends Extension
         if ($this->resource !== null) {
             return;
         }
+        $tries = 0;
+        while ($tries < 5) {
+            $command = $this->getCommand();
+            $descriptorSpec = [
+                0 => ['pipe', 'r'],
+                1 => ['file', Configuration::logDir() . 'phpbuiltinserver.output.txt', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $this->resource = proc_open($command, $descriptorSpec, $this->pipes, null, null, ['bypass_shell' => true]);
 
-        $command        = $this->getCommand();
-        $descriptorSpec = [
-            ['pipe', 'r'],
-            ['file', Configuration::logDir() . 'phpbuiltinserver.output.txt', 'w'],
-            ['file', Configuration::logDir() . 'phpbuiltinserver.errors.txt', 'a']
-        ];
-        $this->resource = proc_open($command, $descriptorSpec, $this->pipes, null, null, ['bypass_shell' => true]);
-        if (!is_resource($this->resource)) {
-            throw new ExtensionException($this, 'Failed to start server.');
+            if (!is_resource($this->resource)) {
+                throw new ExtensionException($this, 'Failed to start server.');
+            }
+            // Since data is returned more or less instantly, we need to have nonblocking in case of no-errors.
+            sleep(1);
+            stream_set_blocking($this->pipes[2], false);
+            $stream = stream_get_contents($this->pipes[2]);
+            if ($stream) {
+                if (preg_match('/reason: Address already in use/', $stream)) {
+                    $this->stopServer();
+                    $this->writeln('Address already in use, retrying on: ' . ++$this->port);
+                    $tries++;
+                    if ($tries == 5) {
+                        throw new ExtensionException($this, "Failed to start server.");
+                    }
+                } else {
+                    $this->writeln("Got message: {$stream} while starting PHP server");
+                }
+            } else {
+                $_ENV['SERVER_PORT'] = $this->port;
+                break;
+            }
         }
-        if (!proc_get_status($this->resource)['running']) {
+        $procStatus = proc_get_status($this->resource);
+        if (!$procStatus['running']) {
             proc_close($this->resource);
             throw new ExtensionException($this, 'Failed to start server.');
         }
         $max_checks = 10;
-        $checks     = 0;
+        $checks = 0;
         $this->write("Waiting for the PHP server to be reachable");
         while (true) {
             if ($checks >= $max_checks) {
@@ -123,7 +147,7 @@ class PhpBuiltinServer extends Extension
                 break;
             }
 
-            if ($fp = @fsockopen($this->config['hostname'], $this->config['port'], $errCode, $errStr, 10)) {
+            if ($fp = @fsockopen($this->config['hostname'], $this->port, $errCode, $errStr, 10)) {
                 $this->writeln('');
                 $this->writeln("PHP server is now reachable");
                 fclose($fp);
@@ -144,7 +168,7 @@ class PhpBuiltinServer extends Extension
     private function stopServer()
     {
 
-        if ( $this->resource !== null) {
+        if ($this->resource !== null) {
             $this->write("Stopping PHP Server");
 
             // Wait till the server has been stopped
@@ -216,6 +240,8 @@ class PhpBuiltinServer extends Extension
                 "\nDocument root must be a directory. Please, update the configuration.\n\n"
             );
         }
+
+        $this->port = $this->config['port'];
     }
 
     public function beforeSuite(SuiteEvent $event)
@@ -226,7 +252,7 @@ class PhpBuiltinServer extends Extension
         }
 
         $settings = $event->getSettings();
-        $config   = [];
+        $config = [];
         if (array_key_exists("extensions", $settings)) {
             if (array_key_exists("config", $settings["extensions"])) {
                 if (array_key_exists("Codeception\\Extension\\PhpBuiltinServer", $settings["extensions"]["config"])) {
