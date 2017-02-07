@@ -129,7 +129,6 @@ class PhpBuiltinServer extends Extension
                     $this->writeln("Got message: {$stream} while starting PHP server");
                 }
             } else {
-                $_ENV['SERVER_PORT'] = $this->port;
                 break;
             }
         }
@@ -160,7 +159,7 @@ class PhpBuiltinServer extends Extension
             // Wait before checking again
             sleep(1);
         }
-
+        $_ENV['SERVER_PORT'] = $this->port;
         // Clear progress line writing
         $this->writeln('');
     }
