@@ -7,6 +7,7 @@ namespace Codeception\Extension;
 
 use Codeception\Configuration;
 use Codeception\Event\SuiteEvent;
+use Codeception\Event\TestEvent;
 use Codeception\Exception\ModuleConfigException;
 use Codeception\Platform\Extension;
 use Codeception\Exception\ExtensionException;
@@ -15,6 +16,7 @@ class PhpBuiltinServer extends Extension
 {
     static $events = [
         'suite.before' => ['beforeSuite', 1024],
+        'test.before' => ['beforeTest', 4096]
     ];
 
     private $requiredFields = ['hostname', 'port', 'documentRoot'];
@@ -22,6 +24,7 @@ class PhpBuiltinServer extends Extension
     private $pipes;
     private $orgConfig;
     private $port;
+    private $counter = 0;
 
     public function __construct($config, $options)
     {
@@ -95,7 +98,7 @@ class PhpBuiltinServer extends Extension
         return $command;
     }
 
-    private function startServer()
+    private function startServer($output = true)
     {
         if ($this->resource !== null) {
             return;
@@ -119,14 +122,18 @@ class PhpBuiltinServer extends Extension
             $stream = stream_get_contents($this->pipes[2]);
             if ($stream) {
                 if (preg_match('/reason: Address already in use/', $stream)) {
-                    $this->stopServer();
-                    $this->writeln('Address already in use, retrying on: ' . ++$this->port);
+                    $this->stopServer($output);
+                    if ($output) {
+                        $this->writeln('Address already in use, retrying on: ' . ++$this->port);
+                    }
                     $tries++;
                     if ($tries == 5) {
                         throw new ExtensionException($this, "Failed to start server.");
                     }
                 } else {
-                    $this->writeln("Got message: {$stream} while starting PHP server");
+                    if ($output) {
+                        $this->writeln("Got message: {$stream} while starting PHP server");
+                    }
                 }
             } else {
                 break;
@@ -139,7 +146,9 @@ class PhpBuiltinServer extends Extension
         }
         $max_checks = 10;
         $checks = 0;
-        $this->write("Waiting for the PHP server to be reachable");
+        if ($output) {
+            $this->write("Waiting for the PHP server to be reachable");
+        }
         while (true) {
             if ($checks >= $max_checks) {
                 throw new ExtensionException($this, 'PHP server never became reachable');
@@ -147,8 +156,10 @@ class PhpBuiltinServer extends Extension
             }
 
             if ($fp = @fsockopen($this->config['hostname'], $this->port, $errCode, $errStr, 10)) {
-                $this->writeln('');
-                $this->writeln("PHP server is now reachable");
+                if ($output) {
+                    $this->writeln('');
+                    $this->writeln("PHP server is now reachable");
+                }
                 fclose($fp);
                 break;
             }
@@ -161,10 +172,12 @@ class PhpBuiltinServer extends Extension
         }
         $_ENV['SERVER_PORT'] = $this->port;
         // Clear progress line writing
-        $this->writeln('');
+        if ($output) {
+            $this->writeln('');
+        }
     }
 
-    private function stopServer()
+    private function stopServer($output = true)
     {
 
         if ($this->resource !== null) {
@@ -176,8 +189,10 @@ class PhpBuiltinServer extends Extension
                 // If we're on the last loop, and it's still not shut down, just
                 // unset resource to allow the tests to finish
                 if ($i == $max_checks - 1 && proc_get_status($this->resource)['running'] == true) {
-                    $this->writeln('');
-                    $this->writeln("Unable to properly shutdown PHP server");
+                    if ($output) {
+                        $this->writeln('');
+                        $this->writeln("Unable to properly shutdown PHP server");
+                    }
                     unset($this->resource);
                     $this->resource = null;
                     break;
@@ -185,8 +200,10 @@ class PhpBuiltinServer extends Extension
 
                 // Check if the process has stopped yet
                 if (proc_get_status($this->resource)['running'] == false) {
-                    $this->writeln('');
-                    $this->writeln("PHP server stopped");
+                    if ($output) {
+                        $this->writeln('');
+                        $this->writeln("PHP server stopped");
+                    }
                     unset($this->resource);
                     $this->resource = null;
                     break;
@@ -196,8 +213,9 @@ class PhpBuiltinServer extends Extension
                     fclose($pipe);
                 }
                 proc_terminate($this->resource, 2);
-
-                $this->write('.');
+                if ($output) {
+                    $this->write('.');
+                }
 
                 // Wait before checking again
                 sleep(1);
@@ -273,8 +291,21 @@ class PhpBuiltinServer extends Extension
         // dummy to keep reference to this instance, so that it wouldn't be destroyed immediately
     }
 
+
+    public function beforeTest(TestEvent $event)
+    {
+        if ($this->counter % 100 == 0) {
+            if ($this->counter > 0) {
+                $this->stopServer(false);
+            }
+            $this->startServer(false);
+        }
+        $this->counter++;
+    }
+
     public function afterSuite(SuiteEvent $event)
     {
         $this->stopServer();
+        $this->counter = 0;
     }
 }
