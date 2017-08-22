@@ -16,7 +16,7 @@ class PhpBuiltinServer extends Extension
 {
     static $events = [
         'suite.before' => ['beforeSuite', 1024],
-        'test.before' => ['beforeTest', 4096]
+        'test.before' => ['beforeTest', 4096],
     ];
 
     private $requiredFields = ['hostname', 'port', 'documentRoot'];
@@ -25,6 +25,7 @@ class PhpBuiltinServer extends Extension
     private $orgConfig;
     private $port;
     private $counter = 0;
+    private $enabled = false;
 
     public function __construct($config, $options)
     {
@@ -181,7 +182,9 @@ class PhpBuiltinServer extends Extension
     {
 
         if ($this->resource !== null) {
-            $this->write("Stopping PHP Server");
+            if ($output) {
+                $this->write("Stopping PHP Server");
+            }
 
             // Wait till the server has been stopped
             $max_checks = 10;
@@ -279,21 +282,33 @@ class PhpBuiltinServer extends Extension
         }
         $this->config = array_merge($this->orgConfig, $config);
         $this->validateConfig();
-        $this->startServer();
+        $this->enabled = false;
 
         if (isset($settings["extensions"]["enabled"]) && in_array(
                 trim(get_class($this), "/"),
                 $settings["extensions"]["enabled"]
             )
         ) {
+            $this->enabled = true;
+        }
+        if (isset($settings["extensions"]["disabled"]) && in_array(
+                trim(get_class($this), "/"),
+                $settings["extensions"]["disabled"]
+            )
+        ) {
+            $this->enabled = false;
+        }
+        if ($this->enabled) {
             $this->startServer();
         }
-        // dummy to keep reference to this instance, so that it wouldn't be destroyed immediately
     }
 
 
     public function beforeTest(TestEvent $event)
     {
+        if (!$this->enabled) {
+            return;
+        }
         if ($this->counter % 100 == 0) {
             if ($this->counter > 0) {
                 $this->stopServer(false);
@@ -305,7 +320,9 @@ class PhpBuiltinServer extends Extension
 
     public function afterSuite(SuiteEvent $event)
     {
-        $this->stopServer();
+        if ($this->enabled) {
+            $this->stopServer();
+        }
         $this->counter = 0;
     }
 }
