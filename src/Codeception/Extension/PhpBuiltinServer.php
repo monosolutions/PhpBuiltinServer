@@ -5,6 +5,7 @@
 
 namespace Codeception\Extension;
 
+use function codecept_debug;
 use Codeception\Configuration;
 use Codeception\Event\SuiteEvent;
 use Codeception\Event\TestEvent;
@@ -260,7 +261,9 @@ class PhpBuiltinServer extends Extension
                 "\nDocument root must be a directory. Please, update the configuration.\n\n"
             );
         }
-
+        if (!isset($this->config['maxTests'])) {
+            $this->config['maxTests'] = 100;
+        }
         $this->port = $this->config['port'];
     }
 
@@ -301,6 +304,7 @@ class PhpBuiltinServer extends Extension
         if ($this->enabled) {
             $this->startServer();
         }
+        $this->counter = 0;
     }
 
 
@@ -309,13 +313,14 @@ class PhpBuiltinServer extends Extension
         if (!$this->enabled) {
             return;
         }
-        if ($this->counter % 100 == 0) {
+        if ($this->counter % $this->config['maxTests'] == 0) {
             if ($this->counter > 0) {
                 $this->stopServer(false);
             }
             $this->startServer(false);
         }
         $this->counter++;
+        codecept_debug("Running test: {$this->counter}/{$this->config['maxTests']}");
     }
 
     public function afterSuite(SuiteEvent $event)
