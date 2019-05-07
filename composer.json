@@ -1,5 +1,5 @@
 {
-    "name": "archanium/phpbuiltinserver",
+    "name": "monosolutions/phpbuiltinserver",
     "description": "PhpBuiltinServer extension for Codeception, modified to accept configuration for each suite.",
     "keywords": ["codeception"],
     "minimum-stability": "stable",
